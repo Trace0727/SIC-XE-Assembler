@@ -1,0 +1,46 @@
+1000    COPY    START   1000    
+1000    FIRST   STL     RETADR      17202D
+1003            LDB     #LENGTH     69202D
+1006            BASE    LENGTH  
+1006    CLOOP   +JSUB   RDREC       4B102036
+100A            LDA     LENGTH      032026
+100D            COMP    #0          290000
+1010            JEQ     ENDFIL      332007
+1013            +JSUB   WRREC       4B10205D
+1017            J       CLOOP       3F2FEC
+101A    ENDFIL  LDA     EOF         032010
+101D            STA     BUFFER      0F2016
+1020            LDA     #3          010003
+1023            STA     LENGTH      0F200D
+1026            +JSUB   WRREC       4B10205D
+102A            J       @RETADR     3E2003
+102D    EOF     BYTE    C'EOF'      454F46
+1030    RETADR  RESW    1       
+1033    LENGTH  RESW    1       
+1036    BUFFER  RESB    4096    
+2036    RDREC   CLEAR   X           B410
+2038            CLEAR   A           B400
+203A            CLEAR   S           B440
+203C            +LDT    #4096       75101000
+2040    RLOOP   TD      INPUT       E32019
+2043            JEQ     RLOOP       332FFA
+2046            RD      INPUT       DB2013
+2049            COMPR   A,S         A004
+204B            JEQ     EXIT        332008
+204E            STCH    BUFFER,X    57C003
+2051            TIXR    T           B850
+2053            JLT     RLOOP       3B2FEA
+2056    EXIT    STX     LENGTH      134000
+2059            RSUB                4F0000
+205C    INPUT   BYTE    X'F1'       F1
+205D    WRREC   CLEAR   X           B410
+205F            LDT     LENGTH      774000
+2062    WLOOP   TD      OUTPUT      E32011
+2065            JEQ     WLOOP       332FFA
+2068            LDCH    BUFFER,X    53C003
+206B            WD      OUTPUT      DF2008
+206E            TIXR    T           B850
+2070            JLT     WLOOP       3B2FEF
+2073            RSUB                4F0000
+2076    OUTPUT  BYTE    X'05'       05
+2077            END     FIRST   
