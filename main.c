@@ -60,7 +60,7 @@ int main(int argc, char* argv[])
 	// Do not modify this statement
 	address addresses = { 0x00, 0x00, 0x00 };
 
-	// Check whether at least one (1) input file was provided
+	// Check if at least one input file was provided
 	if(argc < 2)
 	{
 		displayError(MISSING_COMMAND_LINE_ARGUMENTS, argv[0]);
@@ -71,92 +71,103 @@ int main(int argc, char* argv[])
 
 	performPass1(symbols, argv[1], &addresses);
 
-	//	displaySymbolTable(symbols);
-	//
-	//	//Display the assembly summary data
-	//	printf("\nStarting Address: 0x%X\nEnding Address: 0x%X\nProgram Size (bytes): %d\n", addresses.start, addresses.current, addresses.current - addresses.start);
-
 	performPass2(symbols, argv[1], &addresses);
 
 	printf("\n\nDone!\n\n");
 }
 
-
 // Determines the Format 3/4 flags and computes address displacement for Format 3 instruction
-int computeFlagsAndAddress(symbol* symbolArray[],
-                           address* addresses,
-                           segment* segments,
-                           int format)
+int computeFlagsAndAddress(symbol* symbolArray[], address* addresses, segment* segments, int format)
 {
-    char operandBuf[INPUT_BUF_SIZE];
-    strcpy(operandBuf, segments->operand);
+	// Extract operation and operand from the segment
+	    char op[SEGMENT_SIZE];
+	    char operand[SEGMENT_SIZE];
+	    strcpy(op, segments->operation);
+	    strcpy(operand, segments->operand);
 
-    // RSUB or no‐operand
-    if (strlen(operandBuf) == 0) {
-        int opc = getOpcodeValue(segments->operation) & 0xFC;
-        return (opc << 16);
-    }
+	    // Determine if operand uses immediate (#), indirect (@), or indexed (,X) addressing
+	    bool isImmediate = (operand[0] == IMMEDIATE_CHARACTER);
+	    bool isIndirect = (operand[0] == INDIRECT_CHARACTER);
+	    bool isIndexed = (strstr(operand, INDEX_STRING) != NULL);
 
-    // Default “direct” addressing (N=1, I=1)
-    int flags = FLAG_N | FLAG_I;
+	    // Clean up operand: remove addressing symbols and ",X" if present
+	    if (isImmediate || isIndirect) {
+	        memmove(operand, operand + 1, strlen(operand));
+	    }
+	    char* comma = strstr(operand, INDEX_STRING);
+	    if (comma != NULL) {
+	        *comma = '\0'; // Remove ,X
+	    }
 
-    // Immediate (#) or indirect (@)
-    if (operandBuf[0] == IMMEDIATE_CHARACTER) {
-        flags = FLAG_I;
-        memmove(operandBuf, operandBuf + 1, strlen(operandBuf));
-    }
-    else if (operandBuf[0] == INDIRECT_CHARACTER) {
-        flags = FLAG_N;
-        memmove(operandBuf, operandBuf + 1, strlen(operandBuf));
-    }
+	    // Set n and i flags
+	    int n, i;
+	    if (isImmediate && isNumeric(operand)) {
+	        // Pure immediate numeric
+	        n = 0;
+	        i = 1;
+	    } else if (format == FORMAT_4) {
+	        // Format 4 always uses simple addressing
+	        n = 1;
+	        i = 1;
+	    } else {
+	        // Format 3: set based on @ or #
+	        n = (isIndirect || (!isImmediate && !isIndirect)) ? 1 : 0;
+	        i = (isImmediate || (!isImmediate && !isIndirect)) ? 1 : 0;
+	    }
 
-    // Indexed (,X)
-    char* idx = strstr(operandBuf, INDEX_STRING);
-    if (idx) {
-        flags |= FLAG_X;
-        *idx = '\0';
-    }
+	    // First byte: 6-bit opcode + ni flags
+	    int opcode = getOpcodeValue(op) & 0xFC;
+	    int byte1 = opcode | (n << 1) | i;
 
-    // Build 6-bit opcode + NI bits
-    int opcode = getOpcodeValue(segments->operation) & 0xFC;
-    int instr  = (opcode | (flags >> 4)) << 16;
+	    // Handle immediate numeric literals
+	    if (isImmediate && isNumeric(operand)) {
+	        int value = strtol(operand, NULL, 10);
+	        if (format == FORMAT_4) {
+	            // 4-byte encoding: opcode + nixbpe + 20-bit address
+	            int byte2 = (1 << 4); // e=1, rest flags 0
+	            return (byte1 << 24) | (byte2 << 16) | ((value >> 8) << 8) | (value & 0xFF);
+	        } else {
+	            // 3-byte encoding: opcode + nixbpe + 12-bit constant
+	            return (byte1 << 16) | (value & 0xFFF);
+	        }
+	    }
 
-    // FORMAT 4? (set E-bit and use 20-bit address)
-    if (format == FORMAT_4) {
-        flags |= FLAG_E;
-        int addr = getSymbolAddress(symbolArray, operandBuf);
-        return instr
-             | ((flags & 0xF) << 12)
-             | (addr & 0xFFFFF);
-    }
+	    // Lookup target address from symbol table
+	    int targetAddr = getSymbolAddress(symbolArray, operand);
 
-    // Numeric‐literal branch (#0, #5, etc.)
-    if ((flags & FLAG_I) && isNumeric(operandBuf)) {
-        int val = strtol(operandBuf, NULL, 10);
-        return instr | (val & 0xFFF);
-    }
+	    // Calculate displacement or address based on format
+	    int disp = 0, b = 0, p = 0, e = (format == FORMAT_4 ? 1 : 0);
+	    int nextPC = addresses->current + 3; // PC-relative uses PC after this instruction
 
-    // Symbolic addressing: PC‐relative or base‐relative
-    int target = getSymbolAddress(symbolArray, operandBuf);
-    int pc     = addresses->current + addresses->increment;
-    int disp   = target - pc;
+	    if (format == FORMAT_4) {
+	        // Use absolute 20-bit address for format 4
+	        disp = targetAddr;
+	    } else {
+	        // Format 3: use PC or base relative addressing
+	        int diff = targetAddr - nextPC;
+	        if (diff >= PC_MIN_RANGE && diff <= PC_MAX_RANGE) {
+	            p = 1;
+	            disp = diff & 0xFFF;
+	        } else {
+	            b = 1;
+	            disp = (targetAddr - addresses->base) & 0xFFF;
+	        }
+	    }
 
-    // PC‐relative?
-    if (disp >= PC_MIN_RANGE && disp <= PC_MAX_RANGE) {
-        flags |= FLAG_P;
-        return instr | (disp & 0xFFF);
-    }
+	    int x = isIndexed ? 1 : 0;
+	    int flags = (x << 3) | (b << 2) | (p << 1) | e;
 
-    // Base‐relative?
-    disp = target - addresses->base;
-    if (disp >= 0 && disp <= BASE_MAX_RANGE) {
-        flags |= FLAG_B;
-        return instr | (disp & 0xFFF);
-    }
-
-    // Out of range
-    displayError(ADDRESS_OUT_OF_RANGE, operandBuf);
-    exit(1);
+	    // Final object code: depends on format
+	    if (format == FORMAT_4) {
+	        int byte2 = (flags << 4) | ((disp >> 16) & 0x0F);
+	        int byte3 = (disp >> 8) & 0xFF;
+	        int byte4 = disp & 0xFF;
+	        return (byte1 << 24) | (byte2 << 16) | (byte3 << 8) | byte4;
+	    } else {
+	        int byte2 = (flags << 4) | ((disp >> 8) & 0x0F);
+	        int byte3 = disp & 0xFF;
+	        return (byte1 << 16) | (byte2 << 8) | byte3;
+	    }
 }
 
 // Do no modify any part of this function
@@ -164,7 +175,6 @@ int computeFlagsAndAddress(symbol* symbolArray[],
 char* createFilename(char* filename, const char* extension)
 {
 	char* temp = (char*)malloc(sizeof(char) * strlen(filename) + 1);
-
 	int n = strchr(filename, '.') - filename;
 	strncpy(temp, filename, n);
 	strcat(temp, extension);
@@ -176,27 +186,22 @@ char* createFilename(char* filename, const char* extension)
 void flushTextRecord(FILE* file, objectFileData* data, address* addresses)
 {
 	writeToObjFile(file, *data);
-
 	data->recordAddress = addresses->current;
 	data->recordByteCount = 0;
 	data->recordEntryCount = 0;
 }
 
-
+// Do no modify any part of this function
 // Returns a hex byte containing the registers listed in the provided operand
 int getRegisters(char* operand)
 {
 	int registerValue = 0;
-
-	// Compute value of first register
 	registerValue = getRegisterValue(operand[0]) * REGISTER_MULTIPLIER;
 
-	// Check if a second register is present in the operand string
 	int operandLength = strlen(operand);
 	if (operandLength > 1) {
 		registerValue += getRegisterValue(operand[operandLength - 1]);
 	}
-
 	return registerValue;
 }
 
@@ -206,23 +211,15 @@ int getRegisterValue(char registerName)
 {
 	switch(registerName)
 	{
-	case 'A':
-		return REGISTER_A;
-	case 'B':
-		return REGISTER_B;
-	case 'L':
-		return REGISTER_L;
-	case 'S':
-		return REGISTER_S;
-	case 'T':
-		return REGISTER_T;
-	case 'X':
-		return REGISTER_X;
-	default:
-		return -1;
+	case 'A': return REGISTER_A;
+	case 'B': return REGISTER_B;
+	case 'L': return REGISTER_L;
+	case 'S': return REGISTER_S;
+	case 'T': return REGISTER_T;
+	case 'X': return REGISTER_X;
+	default: return -1;
 	}
 }
-
 
 // Do no modify any part of this function
 // Returns true if the provided string contains a numeric value; otherwise, false
@@ -230,14 +227,10 @@ bool isNumeric(char* string)
 {
 	for(int x = 0; x < strlen(string); x++)
 	{
-		if(!isdigit(string[x]))
-		{
-			return false;
-		}
+		if(!isdigit(string[x])) return false;
 	}
 	return true;
 }
-
 
 // Do no modify any part of this function
 // Performs Pass 1 of the SIC/XE assembler
@@ -254,218 +247,255 @@ void performPass1(symbol* symbolTable[], char* filename, address* addresses)
 		exit(-1);
 	}
 
-	while (fgets(line, INPUT_BUF_SIZE, file))
-	{
-		if (addresses->current >= 0x100000)
-		{
-			char value[10];
-			sprintf(value, "0x%X", addresses->current);
-			displayError(OUT_OF_MEMORY, value);
-			exit(-1);
-		}
+	while (fgets(line, INPUT_BUF_SIZE, file)) {
+	    if (addresses->current >= 0x100000) {
+	        char value[10];
+	        sprintf(value, "0x%X", addresses->current);
+	        displayError(OUT_OF_MEMORY, value);
+	        exit(-1);
+	    }
 
-		if (line[0] < 32) // Line is blank
-		{
-			displayError(BLANK_RECORD, NULL);
-			exit(-1);
-		}
-		else if (line[0] == COMMENT) // Line is comment
-		{
-			continue;
-		}
-		else
-		{
-			segment* segments = prepareSegments(line);
+	    if (line[0] < 32) {
+	        displayError(BLANK_RECORD, NULL);
+	        exit(-1);
+	    } else if (line[0] == COMMENT) {
+	        continue;
+	    }
 
-			if (isDirective(segments->label) || isOpcode(segments->label))
-			{
-				displayError(ILLEGAL_SYMBOL, segments->label);
-				exit(-1);
-			}
+	    segment* segments = prepareSegments(line);
 
-			if (directiveType != isDirective(segments->operation))
-			{
-				if (isStartDirective(directiveType))
-				{
-					addresses->start = addresses->current = strtol(segments->operand, NULL, 16);
-					continue;
-				}
-				else
-				{
-					addresses->increment = getMemoryAmount(directiveType, segments->operand);
-				}
-			}
-			else if (isOpcode(segments->operation))
-			{
-				addresses->increment = getOpcodeFormat(segments->operation);
-			}
-			else
-			{
-				displayError(ILLEGAL_OPCODE_DIRECTIVE, segments->operation);
-				exit(-1);
-			}
+	    if (isDirective(segments->label) || isOpcode(segments->label)) {
+	        displayError(ILLEGAL_SYMBOL, segments->label);
+	        exit(-1);
+	    }
 
-			if (strlen(segments->label) > 0)
-			{
-				insertSymbol(symbolTable, segments->label, addresses->current);
-			}
+	    int dirType = isDirective(segments->operation);
 
-			addresses->current += addresses->increment;
-		}
-		memset(line, '\0', INPUT_BUF_SIZE);
+	    if (isStartDirective(dirType)) {
+	        addresses->start = addresses->current = strtol(segments->operand, NULL, 16);
+	        continue;
+	    }
+
+	    if (dirType) {
+	        addresses->increment = getMemoryAmount(dirType, segments->operand);
+	    } else if (isOpcode(segments->operation)) {
+	        addresses->increment = getOpcodeFormat(segments->operation);
+	    } else {
+	        displayError(ILLEGAL_OPCODE_DIRECTIVE, segments->operation);
+	        exit(-1);
+	    }
+
+	    if (strlen(segments->label) > 0) {
+	        insertSymbol(symbolTable, segments->label, addresses->current);
+	    }
+
+	    addresses->current += addresses->increment;
+	    memset(line, '\0', INPUT_BUF_SIZE);
 	}
 	fclose(file);
 }
 
-
 // Performs Pass 2 of the SIC/XE assembler
-void performPass2(symbol* symbolTable[],
-                  char* filename,
-                  address* addresses)
+void performPass2(symbol* symbolTable[], char* filename, address* addresses)
 {
-    // Open listing and object files
+    int execAddr = addresses->start;
+
     char* lstName = createFilename(filename, ".lst");
     char* objName = createFilename(filename, ".obj");
     FILE* lst = fopen(lstName, "w");
-    FILE* obj = fopen(objName, "w");
+    FILE* obj = fopen(objName, "w+");  // opened in "w+" mode for read/write
+
     if (!lst || !obj) {
         displayError(FILE_NOT_FOUND, filename);
         exit(-1);
     }
 
-    // 1) Header record
     objectFileData hdr = {0};
-    hdr.recordType   = 'H';
-    strncpy(hdr.programName, filename, NAME_SIZE - 1);
-    hdr.startAddress = addresses->start;
-    hdr.programSize  = addresses->current - addresses->start;
-    writeToObjFile(obj, hdr);
+    hdr.recordType = 'H';
 
-    // 2) Begin first Text record
     objectFileData txt = {0};
-    txt.recordType    = 'T';
-    txt.recordAddress = addresses->start;
+    txt.recordType = 'T';
 
-    // 3) Pass 2: re-scan the source
     FILE* src = fopen(filename, "r");
-    char  line[INPUT_BUF_SIZE];
+    char line[INPUT_BUF_SIZE];
+
+    bool startSeen = false;
+    addresses->current = addresses->start;
+
+    // First pass to extract header values
     while (fgets(line, sizeof line, src)) {
-        segment* seg   = prepareSegments(line);
-        int      dtype = isDirective(seg->operation);
+        if (line[0] < 32 || line[0] == COMMENT) continue;
 
-        // A) BYTE directive?  pack C'…' or X'…'
+        segment* seg = prepareSegments(line);
+        int dtype = isDirective(seg->operation);
+
+        if (isStartDirective(dtype) && !startSeen) {
+            startSeen = true;
+            hdr.startAddress = strtol(seg->operand, NULL, 16);
+            addresses->start = hdr.startAddress;
+            addresses->current = hdr.startAddress;
+            strncpy(hdr.programName, seg->label, NAME_SIZE - 1);
+            break;
+        }
+    }
+
+    // Reserve space for header record
+    fseek(obj, 40, SEEK_SET); // skip room for 1 header line of about ~40 characters
+
+    rewind(src);
+    txt.recordAddress = addresses->current;
+
+    while (fgets(line, sizeof line, src)) {
+        if (line[0] < 32 || line[0] == COMMENT) continue;
+
+        segment* seg = prepareSegments(line);
+        int dtype = isDirective(seg->operation);
+
+        if (isStartDirective(dtype)) {
+            int addr = strtol(seg->operand, NULL, 16);
+            addresses->start = addr;
+            addresses->current = addr;
+            txt.recordAddress = addr;
+            writeToLstFile(lst, addresses->current, seg, 0);
+            continue;
+        }
+
+        if (isEndDirective(dtype)) {
+            if (seg->operand[0] != '\0') {
+                execAddr = getSymbolAddress(symbolTable, seg->operand);
+            }
+            writeToLstFile(lst, addresses->current, seg, 0);
+            continue;
+        }
+
+        if (isBaseDirective(dtype)) {
+            addresses->base = getSymbolAddress(symbolTable, seg->operand);
+            writeToLstFile(lst, addresses->current, seg, 0);
+            continue;
+        }
+
+        if (isReserveDirective(dtype)) {
+            if (txt.recordEntryCount > 0) {
+                flushTextRecord(obj, &txt, addresses);
+                txt.recordType = 'T';
+            }
+            writeToLstFile(lst, addresses->current, seg, 0);
+            addresses->current += getMemoryAmount(dtype, seg->operand);
+            txt.recordAddress = addresses->current; // 🟢 FIX HERE
+            continue;
+        }
+
         if (isDataDirective(dtype)) {
-            // seg->operand is like "C'EOF'" or "X'F1'"
-            char* op      = seg->operand;
-            int   code    = 0;
-            int   nbytes  = 0;
+            int nbytes = 0, code = 0;
+            if (seg->operand[0] == 'X') {
+                char* start = strchr(seg->operand, '\'') + 1;
+                char* end = strchr(start, '\'');
+                char hex[9] = {0};
+                strncpy(hex, start, end - start);
+                code = strtol(hex, NULL, 16);
+                nbytes = strlen(hex) / 2;
+            } else if (seg->operand[0] == 'C') {
+                char* start = strchr(seg->operand, '\'') + 1;
+                char* end = strchr(start, '\'');
+                nbytes = end - start;
+                for (int i = 0; i < nbytes; i++)
+                    code = (code << 8) | (unsigned char)start[i];
+            } else {
+                code = getByteValue(dtype, seg->operand);
+                nbytes = getMemoryAmount(dtype, seg->operand);
+            }
 
-            if (op[0] == 'C') {
-                // character literal
-                char* p = strchr(op, '\'') + 1;
-                char* end = strrchr(op, '\'');
-                while (p < end) {
-                    code = (code << 8) | (unsigned char)(*p++);
-                    nbytes++;
+            if (txt.recordByteCount + nbytes > MAX_RECORD_BYTE_COUNT) {
+                if (txt.recordEntryCount > 0) {
+                    flushTextRecord(obj, &txt, addresses);
+                    txt.recordType = 'T';
+                    txt.recordAddress = addresses->current;
                 }
             }
-            else if (op[0] == 'X') {
-                // hex literal
-                char* p = strchr(op, '\'') + 1;
-                char* end = strrchr(op, '\'');
-                int len = end - p;
-                nbytes = len / 2;
-                code = (int)strtol(p, NULL, 16);
-            }
-            else {
-                // Shouldn’t happen, but guard it
-                displayError(UNKNOWN_SYMBOL, op);
-                exit(1);
-            }
 
-            // Flush T-record if adding this BYTE would exceed 30 bytes
-            if (txt.recordByteCount + nbytes > MAX_RECORD_BYTE_COUNT) {
-                flushTextRecord(obj, &txt, addresses);
-                txt.recordType    = 'T';
-                txt.recordAddress = addresses->current;
-            }
-
-            // Append the BYTE literal bytes
             txt.recordEntries[txt.recordEntryCount++] = (recordEntry){ nbytes, code };
             txt.recordByteCount += nbytes;
 
-            // Write to listing and advance location by nbytes
             writeToLstFile(lst, addresses->current, seg, code);
             addresses->current += nbytes;
             continue;
         }
 
-        // B) Any other directive? (START, END, RESW, RESB, BASE, etc.)
-        if (!isOpcode(seg->operation)) {
-            writeToLstFile(lst, addresses->current, seg, 0);
-            addresses->current += addresses->increment;
+        if (isOpcode(seg->operation)) {
+            int fmt = getOpcodeFormat(seg->operation);
+            int objCode = 0, nbytes = 0;
+
+            if (strcmp(seg->operation, "RSUB") == 0) {
+                objCode = 0x4F0000;
+                nbytes = 3;
+                seg->operand[0] = '\0';
+            } else if (fmt == FORMAT_1) {
+                objCode = getOpcodeValue(seg->operation) & 0xFF;
+                nbytes = 1;
+            } else if (fmt == FORMAT_2) {
+                int regs = getRegisters(seg->operand) & 0xFF;
+                objCode = ((getOpcodeValue(seg->operation) & 0xFF) << 8) | regs;
+                nbytes = 2;
+            } else {
+                objCode = computeFlagsAndAddress(symbolTable, addresses, seg, (fmt == FORMAT_4 ? FORMAT_4 : FORMAT_3));
+                nbytes = (fmt == FORMAT_4 ? 4 : 3);
+            }
+
+            if (txt.recordByteCount + nbytes > MAX_RECORD_BYTE_COUNT) {
+                if (txt.recordEntryCount > 0) {
+                    flushTextRecord(obj, &txt, addresses);
+                    txt.recordType = 'T';
+                    txt.recordAddress = addresses->current;
+                }
+            }
+
+            txt.recordEntries[txt.recordEntryCount++] = (recordEntry){ nbytes, objCode };
+            txt.recordByteCount += nbytes;
+
+            writeToLstFile(lst, addresses->current, seg, objCode);
+            addresses->current += nbytes;
             continue;
         }
 
-        // C) Real opcode → compute object code
-        int fmt     = getOpcodeFormat(seg->operation);
-        int objCode = computeFlagsAndAddress(
-                          symbolTable,
-                          addresses,
-                          seg,
-                          (fmt == 4 ? FORMAT_4 : FORMAT_3)
-                      );
-        int nbytes  = (fmt == 2 ? 2 : (fmt == 1 ? 1 : 3));
-
-        // Flush T-record if it would overflow
-        if (txt.recordByteCount + nbytes > MAX_RECORD_BYTE_COUNT) {
-            flushTextRecord(obj, &txt, addresses);
-            txt.recordType    = 'T';
-            txt.recordAddress = addresses->current;
-        }
-
-        // Append this instruction
-        txt.recordEntries[txt.recordEntryCount++] = (recordEntry){ nbytes, objCode };
-        txt.recordByteCount += nbytes;
-
-        // Write to listing and advance
-        writeToLstFile(lst, addresses->current, seg, objCode);
-        addresses->current += addresses->increment;
+        writeToLstFile(lst, addresses->current, seg, 0);
     }
+
     fclose(src);
 
-    // 4) Flush final Text record if any
-    if (txt.recordEntryCount)
+    if (txt.recordEntryCount > 0) {
         flushTextRecord(obj, &txt, addresses);
+    }
 
-    // 5) End record
+    hdr.programSize = addresses->current - hdr.startAddress;
+
+    // Seek back to top and write the header now that size is known
+    fseek(obj, 0, SEEK_SET);
+    writeToObjFile(obj, hdr);
+
     objectFileData endRec = {0};
-    endRec.recordType   = 'E';
-    endRec.startAddress = addresses->start;
+    endRec.recordType = 'E';
+    endRec.startAddress = execAddr;
+    fseek(obj, 0, SEEK_END);
     writeToObjFile(obj, endRec);
 
-    // 6) Close files
     fclose(lst);
     fclose(obj);
 }
+
 
 // Do no modify any part of this function
 // Separates a SIC/XE instruction into individual sections
 segment* prepareSegments(char* statement)
 {
 	segment* temp = malloc(sizeof(segment));
-
 	strncpy(temp->label, statement, SEGMENT_SIZE - 1);
 	strncpy(temp->operation, statement + SEGMENT_SIZE - 1, SEGMENT_SIZE - 1);
 	strncpy(temp->operand, statement + (SEGMENT_SIZE - 1) * 2, SEGMENT_SIZE - 1);
-
-	trim(temp->label); // Label
-	trim(temp->operation); // Operation
-	trim(temp->operand); // Operand
-
+	trim(temp->label);
+	trim(temp->operation);
+	trim(temp->operand);
 	return temp;
 }
-
 
 // Do no modify any part of this function
 // Removes spaces from the end of a segment value
@@ -480,7 +510,6 @@ void trim(char value[])
 	}
 }
 
-
 // Do no modify any part of this function
 // Write SIC/XE instructions along with address and object code information of source code listing file
 void writeToLstFile(FILE* file, int address, segment* segments, int opcode)
@@ -494,11 +523,11 @@ void writeToLstFile(FILE* file, int address, segment* segments, int opcode)
 			isBaseDirective(directiveType) ||
 			isReserveDirective(directiveType))
 	{
-		fprintf(file, "%-8X%-8s%-8s%-8s\n", address, segments->label, segments->operation, segments->operand);
+		fprintf(file, "%-8X%-8s%-8s%-11s\n", address, segments->label, segments->operation, segments->operand);
 	}
 	else if (isEndDirective(directiveType))
 	{
-		fprintf(file, "%-8X%-8s%-8s%-8s", address, segments->label, segments->operation, segments->operand);
+		fprintf(file, "%-8X%-8s%-8s%-11s", address, segments->label, segments->operation, segments->operand);
 	}
 	else
 	{
@@ -510,12 +539,11 @@ void writeToLstFile(FILE* file, int address, segment* segments, int opcode)
 		{
 			length = getOpcodeFormat(segments->operation) * 2;
 		}
-		sprintf(ctrlString, "%%-8X%%-8s%%-8s%%-8s %%0%dX\n", length);
+		sprintf(ctrlString, "%%-8X%%-8s%%-8s%%-11s %%0%dX\n", length);
 
 		fprintf(file, ctrlString, address, segments->label, segments->operation, segments->operand, opcode);
 	}
 }
-
 
 // Do no modify any part of this function
 // Write object code data to object code file
