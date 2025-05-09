@@ -1,4 +1,4 @@
-# SIC_XE-Assembler
+# SICXE-Assembler
 
 A C-based two-pass assembler for the SIC/XE architecture. This project demonstrates symbol table construction, opcode handling, and object code generation. Ideal for educational use in systems programming or compiler construction courses.
 
@@ -17,14 +17,14 @@ SIC_XE Program (PORTFOLIO)/
 ├── opcodes.h
 ├── symbols.c
 ├── symbols.h
-├── test0.sic             # Sample SIC/XE assembly source file
-├── test0.lst             # Generated listing file
-├── test0.obj             # Generated object file
-├── Example test0.lst     # Reference listing output
-├── Example test0.obj     # Reference object output
-├── SIC_XE                # Compiled output binary
-├── readme.rtf            # Documentation file
-├── Project3.dSYM/        # Debug symbols directory (macOS)
+├── test0.sic               # Sample SIC/XE assembly source file
+├── test0.lst               # Generated listing file
+├── test0.obj               # Generated object file
+├── Example test0.lst       # Reference listing output
+├── Example test0.obj       # Reference object output
+├── SIC_XE                  # Compiled output binary
+├── readme.rtf              # Documentation file
+└── Project3.dSYM/          # Debug symbols directory (macOS)
 
 ---
 
@@ -119,6 +119,4 @@ This project is provided for educational purposes and does not currently include
 
 
 ## Author
-**Trace Davis**  
-- GitHub: [Trace0727](https://github.com/Trace0727)  
-- LinkedIn: [Trace Davis](https://www.linkedin.com/in/trace-d-926380138/)
+**Trace**
