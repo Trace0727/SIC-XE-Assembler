@@ -24,7 +24,7 @@ SIC_XE Program (PORTFOLIO)/
 ├── Example test0.lst       # Reference listing output
 ├── Example test0.obj       # Reference object output
 ├── SIC_XE                  # Compiled output binary
-└── Project3.dSYM/          # Debug symbols directory (macOS)
+└── SIC_XE.dSYM/            # Debug symbols directory (macOS)
 ```
 
 ---
