@@ -29,8 +29,6 @@ SIC_XE Program (PORTFOLIO)/
 
 ---
 
-
-
 ## Core C Files
 
 ### `main.c`
@@ -62,8 +60,6 @@ Supports:
 
 ---
 
-
-
 ## Sample Files
 
 ### `test0.sic`
@@ -84,8 +80,6 @@ An object file including:
 
 ---
 
-
-
 ## How to Run Program
 
 Compile the program using `gcc`:
@@ -100,15 +94,11 @@ Output files `test0.lst` and `test0.obj` will be created in the same directory.
 
 ---
 
-
-
 ## Future Enhancements
 - More test files to simulate harder programs
 - GUI-based simulator or web interface
 
 ---
-
-
 
 ## License
 This project is licensed for personal, non-commercial use only. Redistribution, resale, or modification is prohibited without written permission from the author.  
@@ -116,7 +106,7 @@ See the [LICENSE] file for full details.
 
 ---
 
-
-
-## Author
-**Trace**
+## Author  
+**Trace Davis**  
+- GitHub: [Trace0727](https://github.com/Trace0727)  
+- LinkedIn: [Trace Davis](https://www.linkedin.com/in/trace-d-926380138/)
