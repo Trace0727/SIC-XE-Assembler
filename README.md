@@ -103,9 +103,7 @@ Output files `test0.lst` and `test0.obj` will be created in the same directory.
 
 
 ## Future Enhancements
-- Extended support for format 4 and indexed addressing
-- Literal pools and base-relative addressing
-- Integrated loader/linker system
+- More test files to simulate harder programs
 - GUI-based simulator or web interface
 
 ---
