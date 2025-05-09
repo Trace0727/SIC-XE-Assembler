@@ -6,6 +6,7 @@ A C-based two-pass assembler for the SIC/XE architecture. This project demonstra
 
 ## Project Structure
 
+```
 SIC_XE Program (PORTFOLIO)/
 ├── directives.c
 ├── directives.h
@@ -25,6 +26,7 @@ SIC_XE Program (PORTFOLIO)/
 ├── SIC_XE                  # Compiled output binary
 ├── readme.rtf              # Documentation file
 └── Project3.dSYM/          # Debug symbols directory (macOS)
+```
 
 ---
 
