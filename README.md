@@ -1,4 +1,4 @@
-# SICXE-Assembler
+# SIC_XE-Assembler
 
 A C-based two-pass assembler for the SIC/XE architecture. This project demonstrates symbol table construction, opcode handling, and object code generation. Ideal for educational use in systems programming or compiler construction courses.
 
@@ -17,14 +17,14 @@ SIC_XE Program (PORTFOLIO)/
 ├── opcodes.h
 ├── symbols.c
 ├── symbols.h
-├── test0.sic               # Sample SIC/XE assembly source file
-├── test0.lst               # Generated listing file
-├── test0.obj               # Generated object file
-├── Example test0.lst       # Reference listing output
-├── Example test0.obj       # Reference object output
-├── Project3                # Compiled output binary
-├── readme.rtf              # Documentation file
-├── Project3.dSYM/          # Debug symbols directory (macOS)
+├── test0.sic             # Sample SIC/XE assembly source file
+├── test0.lst             # Generated listing file
+├── test0.obj             # Generated object file
+├── Example test0.lst     # Reference listing output
+├── Example test0.obj     # Reference object output
+├── SIC_XE                # Compiled output binary
+├── readme.rtf            # Documentation file
+├── Project3.dSYM/        # Debug symbols directory (macOS)
 
 ---
 
@@ -89,11 +89,11 @@ An object file including:
 
 Compile the program using `gcc`:
 
-    gcc -o Project3 main.c errors.c symbols.c opcodes.c directives.c
+    gcc -o SIC_XE main.c errors.c symbols.c opcodes.c directives.c
 
 Then run the assembler with a `.sic` input file:
 
-    ./Project3 test0.sic
+    ./SIC_XE test0.sic
 
 Output files `test0.lst` and `test0.obj` will be created in the same directory.
 
