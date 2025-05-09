@@ -111,7 +111,8 @@ Output files `test0.lst` and `test0.obj` will be created in the same directory.
 
 
 ## License
-This project is provided for educational purposes and does not currently include a formal license.
+This project is licensed for personal, non-commercial use only. Redistribution, resale, or modification is prohibited without written permission from the author.  
+See the [LICENSE] file for full details.
 
 ---
 
